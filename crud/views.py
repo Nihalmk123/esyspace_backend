@@ -10,6 +10,10 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate, login
 from rest_framework.authtoken.models import Token
+from rest_framework import status
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
+from django.http import JsonResponse
 
 
 #signup
@@ -20,82 +24,42 @@ class UserSignup(APIView):
             user = serializer.save()
             if user:
                 try:
+                    # Generate token for the user
                     token, _ = Token.objects.get_or_create(user=user)
                     return Response({'token': token.key})
                 except Exception as e:
-                        return Response({'error': str(e)})
-                        return Response(serializer.errors)
-
+                    return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                return Response({'error': 'User creation failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+#login
 class UserLogin(APIView):
+    authentication_classes = [] 
+    permission_classes = []  
+
     def post(self, request):
         serializer = UserLoginSerializer(data=request.data)
         if serializer.is_valid():
-            user = authenticate(
-                username=serializer.validated_data['username'],
-                password=serializer.validated_data['password']
-            )
+            username = serializer.validated_data.get('username')
+            password = serializer.validated_data.get('password')
+
+            user = authenticate(username=username, password=password)
             if user:
                 login(request, user)
                 token, _ = Token.objects.get_or_create(user=user)
-                return Response({'token': token.key})  # Return token in response
-        return Response({'error': 'Invalid Credentials'})
-    
-    
+                return JsonResponse({'token': token.key})
+            else:
+                return JsonResponse({'error': 'Invalid username or password'}, status=status.HTTP_401_UNAUTHORIZED)
+        else:
+            return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# create and get 
-class DetailsTable(APIView):
-    def get(self,request):
-        detailsObj=DetailsModel.objects.all()
-        dlSerializeObj=DetailsSerializer(detailsObj,many=True)
-        return Response(dlSerializeObj.data)
-     
-    def post(self,request):
-        serializeobj=DetailsSerializer(data=request.data)
-        if serializeobj.is_valid():
-            serializeobj.save()
-            return Response(200)
-        return Response(serializeobj.errors)
+ 
+class UserAuthView(APIView):
+    def get(self, request):
+        if request.user.is_authenticated:
+            return JsonResponse({'ok': True})
+        else:
+            return JsonResponse({'ok': False})
     
-#  update   
-class DetailsUpdate(APIView):
-    def post(self,request,pk):
-        try:
-            detailObj=DetailsModel.objects.get(pk=pk)
-        except:
-            return Response("Not Found in Database")
-
-        serializeobj=DetailsSerializer(detailObj,data=request.data)
-        if serializeobj.is_valid():
-            serializeobj.save()
-            return Response(200)
-        return Response(serializeobj.errors)
-    
-    def get(self, request, pk):
-        detail_obj = get_object_or_404(DetailsModel, pk=pk)
-        serializer_obj = DetailsSerializer(detail_obj)
-        return Response(serializer_obj.data)
-    
-# delete
-class DetailsDelete(APIView):
-    def post(self,request,pk):
-        try:
-            detailObj=DetailsModel.objects.get(pk=pk)
-        except:
-            return Response("Not Found in Database")
-        detailObj.delete()
-        return Response(200)
-    
-       
-class TaxmasterAdd(APIView):
-    def get(self,request):
-        detailsObj=CreateTaxModel.objects.all()
-        dlSerializeObj=CreateTaxModelSerializer(detailsObj,many=True)
-        return Response(dlSerializeObj.data)
-    
-
-    def post(self,request):
-        serializeobj=CreateTaxModelSerializer(data=request.data)
-        if serializeobj.is_valid():
-            serializeobj.save()
-            return Response(200)
-        return Response(serializeobj.errors)
